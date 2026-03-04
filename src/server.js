@@ -7,6 +7,7 @@ import {
   VideoNotFoundError,
 } from "./errors.js";
 import { extractVideoSource } from "./services/facebookScraper.js";
+import { promises as fs } from "fs";
 import { swaggerSpec } from "./docs/swagger.js";
 
 const app = express();
@@ -36,11 +37,36 @@ app.post("/api/extract", async (req, res) => {
     const payload = await extractVideoSource(url, options);
     return res.json(payload);
   } catch (error) {
+    const tryRemoveArtifacts = async (meta) => {
+      try {
+        const htmlPath = meta?.debugArtifacts?.htmlPath;
+        const metaPath = meta?.debugArtifacts?.metaPath;
+        if (htmlPath) {
+          await fs.unlink(htmlPath).catch(() => {});
+        }
+        if (metaPath) {
+          await fs.unlink(metaPath).catch(() => {});
+        }
+      } catch {
+        // ignore removal errors
+      }
+    };
+
     if (error instanceof VideoNotFoundError) {
-      return res.status(404).json({ error: error.message, code: error.code });
+      if (error.meta) await tryRemoveArtifacts(error.meta);
+      return res.status(404).json({
+        error: error.message,
+        code: error.code,
+        meta: error.meta ?? null,
+      });
     }
     if (error instanceof ScraperError) {
-      return res.status(502).json({ error: error.message, code: error.code });
+      if (error.meta) await tryRemoveArtifacts(error.meta);
+      return res.status(502).json({
+        error: error.message,
+        code: error.code,
+        meta: error.meta ?? null,
+      });
     }
     console.error("Unexpected error extracting video", error);
     return res.status(500).json({
