@@ -1,4 +1,6 @@
 import puppeteer from "puppeteer";
+import fs from "fs";
+import path from "path";
 import {
   FacebookAccessError,
   ScraperError,
@@ -263,7 +265,41 @@ const readVideoUrl = async (page) => {
 
 export const extractVideoSource = async (rawUrl, options = {}) => {
   const targetUrl = normalizeFacebookUrl(rawUrl);
-  const browser = await puppeteer.launch({
+  // Attempt to locate a Chrome/Chromium executable from environment or common locations.
+  const resolveExecutable = () => {
+    const envPath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    if (envPath && fs.existsSync(envPath)) return envPath;
+
+    const cacheDir = process.env.PUPPETEER_CACHE_DIR || process.env.PUPPETEER_CACHE || "/opt/render/.cache/puppeteer";
+    const candidates = [
+      // common system paths
+      "/usr/bin/chromium",
+      "/usr/bin/chromium-browser",
+      "/usr/bin/google-chrome-stable",
+      "/usr/bin/google-chrome",
+      // puppeteer cache layout possibilities
+      path.join(cacheDir, "chrome-linux", "chrome"),
+      path.join(cacheDir, "chrome-linux-127.0.6533.88", "chrome"),
+      path.join(cacheDir, "chrome-linux-127.0.6533-88", "chrome"),
+      path.join(cacheDir, "chromium", "chrome"),
+      // Render's default reported cache
+      path.join("/opt/render/.cache/puppeteer", "chrome-linux", "chrome"),
+    ];
+
+    for (const p of candidates) {
+      try {
+        if (p && fs.existsSync(p)) return p;
+      } catch {
+        // ignore
+      }
+    }
+
+    return null;
+  };
+
+  const executablePath = resolveExecutable();
+
+  const launchOptions = {
     headless: config.headless,
     args: [
       "--no-sandbox",
@@ -271,7 +307,13 @@ export const extractVideoSource = async (rawUrl, options = {}) => {
       "--disable-dev-shm-usage",
       "--disable-gpu",
     ],
-  });
+  };
+  if (executablePath) {
+    launchOptions.executablePath = executablePath;
+    console.warn(`Using Chrome executable at ${executablePath}`);
+  }
+
+  const browser = await puppeteer.launch(launchOptions);
 
   const page = await browser.newPage();
   page.setDefaultNavigationTimeout(options.timeoutMs ?? config.navigationTimeoutMs);
