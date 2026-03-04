@@ -15,6 +15,9 @@ export const persistDebugArtifacts = async ({
   requestedUrl,
   inlineCandidates,
   networkCandidates,
+  scriptCandidates,
+  htmlCandidates,
+  htmlContent,
   dir,
 }) => {
   const targetDir = resolveDir(dir ?? "snapshots");
@@ -23,12 +26,12 @@ export const persistDebugArtifacts = async ({
   const htmlPath = path.join(targetDir, `${slug}.html`);
   const metaPath = path.join(targetDir, `${slug}.json`);
 
-  const [htmlContent, pageUrl] = await Promise.all([
-    page.content(),
+  const [htmlSnapshot, pageUrl] = await Promise.all([
+    htmlContent ?? page.content(),
     page.url(),
   ]);
 
-  await fs.writeFile(htmlPath, htmlContent, "utf-8");
+  await fs.writeFile(htmlPath, htmlSnapshot, "utf-8");
   await fs.writeFile(
     metaPath,
     JSON.stringify(
@@ -36,6 +39,8 @@ export const persistDebugArtifacts = async ({
         requestedUrl,
         pageUrl,
         inlineCandidates,
+        scriptCandidates,
+        htmlCandidates,
         networkCandidates,
         capturedAt: new Date().toISOString(),
       },

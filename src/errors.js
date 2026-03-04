@@ -15,8 +15,11 @@ export class FacebookAccessError extends ScraperError {
 }
 
 export class VideoNotFoundError extends ScraperError {
-  constructor(message = "Unable to locate a playable video for this post.") {
-    super(message, { code: "VIDEO_NOT_FOUND" });
+  constructor(
+    message = "Unable to locate a playable video for this post.",
+    meta,
+  ) {
+    super(message, { code: "VIDEO_NOT_FOUND", meta });
     this.name = "VideoNotFoundError";
   }
 }

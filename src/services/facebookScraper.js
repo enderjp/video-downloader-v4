@@ -9,17 +9,46 @@ import { loadFacebookCookies } from "../utils/loadCookies.js";
 import { persistDebugArtifacts } from "../utils/debugArtifacts.js";
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const MP4_URL_PATTERN = /\.mp4(?:\?|$)/i;
+const MP4_URL_PATTERN = /.mp4(?:\?|$)/i;
 const MAX_NETWORK_CANDIDATES = 10;
-const PLAYABLE_URL_REGEX =
-  /"(?:browser_native|playable|progressive)_url(?:_quality_hd)?":"(https?:\\\/\\\/[^\"]+)"/g;
+const PLAYABLE_URL_REGEX = new RegExp(
+  '"(?:browser_native(?:_(?:sd|hd))?|playable|progressive)_url(?:_quality_hd)?":"(https?:\\/\\/[^"]+)"',
+  "g",
+);
+const DASH_BASE_URL_REGEX = new RegExp(
+  '"base_url":"(https?:\\/\\/[^"]+)"',
+  "g",
+);
+const XML_BASE_URL_REGEX = new RegExp(
+  '<BaseURL>(https?:\\/\\/[^<]+)<\\/BaseURL>',
+  "gi",
+);
+const GENERIC_ESCAPED_MP4_REGEX = new RegExp(
+  '(https?:\\/\\/[^"\\s]+\\.mp4[^"\\s]*)',
+  "gi",
+);
+const INLINE_CANDIDATE_REGEXES = [
+  PLAYABLE_URL_REGEX,
+  DASH_BASE_URL_REGEX,
+  XML_BASE_URL_REGEX,
+  GENERIC_ESCAPED_MP4_REGEX,
+].map((regex) => ({ source: regex.source, flags: regex.flags }));
+
+const decodeUnicodeSequences = (value) =>
+  typeof value === "string"
+    ? value.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
+        String.fromCharCode(parseInt(hex, 16))
+      )
+    : "";
 
 const decodeJsonEscapes = (value) =>
-  value
-    .replace(/\u0025/gi, "%")
-    .replace(/\u0026/gi, "&")
-    .replace(/\u003d/gi, "=")
-    .replace(/\u002f/gi, "/");
+  decodeUnicodeSequences(value)
+    .replace(/\\\//g, "/")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#039;/gi, "'");
 
 const normalizeCandidateUrl = (value) => {
   if (!value || typeof value !== "string") {
@@ -48,13 +77,22 @@ const parsePlayableUrlsFromText = (payload) => {
   if (!payload || typeof payload !== "string") {
     return [];
   }
-  const regex = new RegExp(PLAYABLE_URL_REGEX.source, PLAYABLE_URL_REGEX.flags);
-  const matches = [];
-  let match;
-  while ((match = regex.exec(payload)) !== null) {
-    matches.push(match[1]);
+  const decodedPayload = decodeJsonEscapes(payload);
+  const patterns = [
+    PLAYABLE_URL_REGEX,
+    DASH_BASE_URL_REGEX,
+    XML_BASE_URL_REGEX,
+    GENERIC_ESCAPED_MP4_REGEX,
+  ];
+  const matches = new Set();
+  for (const pattern of patterns) {
+    const regex = new RegExp(pattern.source, pattern.flags);
+    let match;
+    while ((match = regex.exec(decodedPayload)) !== null) {
+      matches.add(match[1]);
+    }
   }
-  return matches;
+  return Array.from(matches);
 };
 
 const watchNetworkForVideoUrls = (page) => {
@@ -114,25 +152,26 @@ const watchNetworkForVideoUrls = (page) => {
 };
 
 const extractInlineVideoUrls = async (page) =>
-  page.evaluate(
-    (patternSource, patternFlags) => {
-      const urls = new Set();
-      const pattern = new RegExp(patternSource, patternFlags);
-      for (const script of Array.from(document.scripts)) {
-        const text = script?.textContent;
-        if (!text) {
-          continue;
-        }
+  page.evaluate((serializedRegexes) => {
+    const urls = new Set();
+    const patterns = serializedRegexes.map(
+      ({ source, flags }) => new RegExp(source, flags),
+    );
+    for (const script of Array.from(document.scripts)) {
+      const text = script?.textContent;
+      if (!text) {
+        continue;
+      }
+      for (const pattern of patterns) {
+        pattern.lastIndex = 0;
         let match;
         while ((match = pattern.exec(text)) !== null) {
           urls.add(match[1]);
         }
       }
-      return Array.from(urls);
-    },
-    PLAYABLE_URL_REGEX.source,
-    PLAYABLE_URL_REGEX.flags,
-  );
+    }
+    return Array.from(urls);
+  }, INLINE_CANDIDATE_REGEXES);
 
 const OG_VIDEO_SELECTORS = [
   'meta[property="og:video:url"]',
@@ -266,13 +305,32 @@ export const extractVideoSource = async (rawUrl, options = {}) => {
     await delay(2000);
 
     const domCandidate = normalizeCandidateUrl(await readVideoUrl(page));
-    const inlineCandidates = (await extractInlineVideoUrls(page))
+    const scriptCandidates = (await extractInlineVideoUrls(page))
       .map(normalizeCandidateUrl)
       .filter(Boolean);
+    const pageHtml = await page.content();
+    const htmlCandidates = parsePlayableUrlsFromText(pageHtml)
+      .map(normalizeCandidateUrl)
+      .filter(Boolean);
+    const inlineCandidates = Array.from(
+      new Set([...scriptCandidates, ...htmlCandidates]),
+    );
     const networkCandidate = networkWatcher.next();
     const networkCandidates = networkWatcher.all();
 
     const videoSource = domCandidate ?? inlineCandidates[0] ?? networkCandidate;
+    const candidateUrls = Array.from(
+      new Set(
+        [domCandidate, ...inlineCandidates, ...networkCandidates].filter(Boolean),
+      ),
+    );
+    const candidateSummary = {
+      dom: domCandidate,
+      inline: inlineCandidates,
+      network: networkCandidates,
+      all: candidateUrls,
+    };
+    let debugArtifacts = null;
 
     if (!videoSource) {
       if (config.enableDebugSnapshots) {
@@ -280,10 +338,14 @@ export const extractVideoSource = async (rawUrl, options = {}) => {
           const artifacts = await persistDebugArtifacts({
             page,
             requestedUrl: targetUrl,
+            scriptCandidates,
+            htmlCandidates,
             inlineCandidates,
             networkCandidates,
+            htmlContent: pageHtml,
             dir: config.debugSnapshotsDir,
           });
+          debugArtifacts = artifacts;
           console.warn(
             `Saved Facebook debug snapshot to ${artifacts.htmlPath} and ${artifacts.metaPath}`,
           );
@@ -291,7 +353,10 @@ export const extractVideoSource = async (rawUrl, options = {}) => {
           console.error("Failed to persist Facebook debug snapshot", snapshotError);
         }
       }
-      throw new VideoNotFoundError();
+      throw new VideoNotFoundError(undefined, {
+        candidates: candidateSummary,
+        debugArtifacts,
+      });
     }
 
     const metadata = options.fetchMetadata === false ? null : await extractMetadata(page);
@@ -301,6 +366,7 @@ export const extractVideoSource = async (rawUrl, options = {}) => {
       sourceUrl: videoSource,
       metadata,
       fetchedAt: new Date().toISOString(),
+      candidates: candidateSummary,
     };
   } catch (error) {
     if (error instanceof ScraperError) {
