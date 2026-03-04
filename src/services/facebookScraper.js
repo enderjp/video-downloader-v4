@@ -268,9 +268,11 @@ export const extractVideoSource = async (rawUrl, options = {}) => {
   // Attempt to locate a Chrome/Chromium executable from environment or common locations.
   const resolveExecutable = () => {
     const envPath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    console.warn("PUPPETEER_EXECUTABLE_PATH:", envPath ?? "(not set)");
     if (envPath && fs.existsSync(envPath)) return envPath;
 
     const cacheDir = process.env.PUPPETEER_CACHE_DIR || process.env.PUPPETEER_CACHE || "/opt/render/.cache/puppeteer";
+    console.warn("PUPPETEER_CACHE_DIR resolving to:", cacheDir);
     const candidates = [
       // common system paths
       "/usr/bin/chromium",
@@ -288,10 +290,27 @@ export const extractVideoSource = async (rawUrl, options = {}) => {
 
     for (const p of candidates) {
       try {
-        if (p && fs.existsSync(p)) return p;
+        const exists = p && fs.existsSync(p);
+        console.warn(`candidate: ${p} exists=${exists}`);
+        if (exists) return p;
       } catch {
         // ignore
       }
+    }
+
+    // If nothing found, attempt to list top-level entries in cache dir to aid debugging (limited)
+    try {
+      if (cacheDir && fs.existsSync(cacheDir)) {
+        const entries = fs.readdirSync(cacheDir).slice(0, 20);
+        console.warn(`puppeteer cache dir contents (${cacheDir}):`, entries);
+      } else if (fs.existsSync("/opt/render/.cache/puppeteer")) {
+        const entries = fs.readdirSync("/opt/render/.cache/puppeteer").slice(0, 20);
+        console.warn("/opt/render/.cache/puppeteer contents:", entries);
+      } else {
+        console.warn("puppeteer cache dir does not exist or is not readable");
+      }
+    } catch (err) {
+      console.warn("error listing puppeteer cache dir:", err?.message ?? err);
     }
 
     return null;
