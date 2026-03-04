@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "postinstall": "PUPPETEER_CACHE_DIR=/tmp/puppeteer npx puppeteer@latest install chrome"
+    "postinstall": "PUPPETEER_CACHE_DIR=/opt/render/.cache/puppeteer npx puppeteer@latest install chrome"
   },
   "keywords": [
     "facebook",

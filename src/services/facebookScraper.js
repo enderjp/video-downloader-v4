@@ -1,5 +1,6 @@
 import puppeteer from "puppeteer";
 import fs from "fs";
+import { execSync } from "child_process";
 import path from "path";
 import {
   FacebookAccessError,
@@ -311,6 +312,39 @@ export const extractVideoSource = async (rawUrl, options = {}) => {
       }
     } catch (err) {
       console.warn("error listing puppeteer cache dir:", err?.message ?? err);
+    }
+
+    // If nothing found, attempt to install Chromium into the resolved cache dir once
+    try {
+      // Respect an opt-out env var so we don't attempt installs when undesired
+      if (!process.env.SKIP_PUPPETEER_INSTALL && cacheDir) {
+        console.warn(`Attempting runtime puppeteer install into cache dir: ${cacheDir}`);
+        const installEnv = { ...process.env, PUPPETEER_CACHE_DIR: cacheDir };
+        try {
+          const out = execSync("npx puppeteer@latest install chrome", {
+            env: installEnv,
+            stdio: ["ignore", "pipe", "pipe"],
+            timeout: 10 * 60 * 1000,
+            maxBuffer: 10 * 1024 * 1024,
+          }).toString();
+          console.warn("puppeteer install output:", out.slice(0, 2000));
+        } catch (installErr) {
+          console.warn("puppeteer runtime install failed:", installErr?.message ?? installErr);
+        }
+
+        // Re-check candidates after attempted install
+        for (const p of candidates) {
+          try {
+            const exists2 = p && fs.existsSync(p);
+            console.warn(`post-install candidate: ${p} exists=${exists2}`);
+            if (exists2) return p;
+          } catch {
+            // ignore
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("error during runtime puppeteer install attempt:", err?.message ?? err);
     }
 
     return null;
