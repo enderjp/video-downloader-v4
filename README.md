@@ -56,6 +56,15 @@ npm start
 
 Swagger UI queda disponible en `http://localhost:3000/docs`, por lo que puedes probar diferentes URLs directamente desde el navegador.
 
+### Ejecutar con Docker
+
+```bash
+docker build -t fb-video-extractor .
+docker run --rm -p 3000:3000 --env-file .env fb-video-extractor
+```
+
+El contenedor ya incluye Chromium del sistema, por lo que no necesitas descargarlo en runtime. Ajusta el archivo `.env` según tus cookies o configuración antes de montar el servicio.
+
 ## Uso del endpoint
 
 Solicitud:
@@ -118,6 +127,18 @@ En caso de error, se devuelve un JSON con `error` y `code` (`VIDEO_NOT_FOUND`, `
 3. En la sección de Environment Variables copia las que necesites (puedes usar `.env.example` como referencia). Si vas a usar cookies, sube el archivo al dashboard de Render y ajusta `FACEBOOK_COOKIES_PATH` al path final (por ejemplo `/opt/render/project/src/cookies-feb-2026.txt`).
 4. Activa los logs en el dashboard para monitorear Puppeteer. Si Facebook bloquea la navegación, Render mostrará el stack trace.
 5. Una vez que Render complete la construcción verás la URL pública (ej.: `https://fb-video-api.onrender.com`). Los endpoints `GET /health`, `GET /docs` y `POST /api/extract` quedan disponibles automáticamente.
+
+## Despliegue en Render usando Docker
+
+Si prefieres que Render construya la imagen desde el `Dockerfile`:
+
+1. En Render, crea un **Web Service** nuevo y elige la opción **Docker**.
+2. Apunta al mismo repositorio y deja la rama `main` o la que desees.
+3. Render detectará el `Dockerfile` en la raíz y ejecutará `docker build` automáticamente. Si necesitas cachear dependencias, habilita el plan con disco persistente.
+4. No es necesario definir Build/Start commands manuales; el contenedor expondrá el puerto `3000` y el servicio levantará `npm start` por defecto.
+5. Configura las variables en la pestaña **Environment** o sube archivos de cookies como secretos. Puedes inyectarlas en el contenedor con `--env-file` durante pruebas locales y reproducirlas en Render con los campos de entorno.
+
+Este enfoque garantiza que Chromium quede horneado dentro de la imagen y evita depender de descargas en tiempo de despliegue.
 
 ## Limitaciones y notas
 
