@@ -361,6 +361,26 @@ export const extractVideoSource = async (rawUrl, options = {}) => {
       "--disable-gpu",
     ],
   };
+  // Support optional outbound proxy via env var (FACEBOOK_PROXY_URL or standard HTTP(S)_PROXY)
+  let proxyAuth = null;
+  const proxyUrlEnv = process.env.FACEBOOK_PROXY_URL || process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
+  if (proxyUrlEnv) {
+    try {
+      const parsed = new URL(proxyUrlEnv);
+      const hostPort = parsed.hostname + (parsed.port ? `:${parsed.port}` : "");
+      const proxyArg = `${parsed.protocol}//${hostPort}`;
+      launchOptions.args.push(`--proxy-server=${proxyArg}`);
+      console.warn(`Using proxy server: ${proxyArg}`);
+      if (parsed.username || parsed.password) {
+        proxyAuth = {
+          username: decodeURIComponent(parsed.username || ""),
+          password: decodeURIComponent(parsed.password || ""),
+        };
+      }
+    } catch (err) {
+      console.warn("Invalid proxy URL in FACEBOOK_PROXY_URL/HTTPS_PROXY/HTTP_PROXY:", err?.message ?? err);
+    }
+  }
   if (executablePath) {
     launchOptions.executablePath = executablePath;
     console.warn(`Using Chrome executable at ${executablePath}`);
@@ -369,6 +389,15 @@ export const extractVideoSource = async (rawUrl, options = {}) => {
   const browser = await puppeteer.launch(launchOptions);
 
   const page = await browser.newPage();
+  // If the proxy requires HTTP auth, apply credentials on the page
+  if (proxyAuth) {
+    try {
+      await page.authenticate(proxyAuth);
+      console.warn("Applied proxy credentials to page");
+    } catch (err) {
+      console.warn("Failed to apply proxy credentials:", err?.message ?? err);
+    }
+  }
   page.setDefaultNavigationTimeout(options.timeoutMs ?? config.navigationTimeoutMs);
 
   await page.setUserAgent(config.userAgent);
