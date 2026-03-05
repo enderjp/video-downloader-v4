@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const optionsSchema = z
   .object({
-    timeoutMs: z.number().int().min(3000).max(120000).optional(),
+    timeoutMs: z.number().int().min(3000).max(150000).optional(),
     fetchMetadata: z.boolean().optional(),
     locale: z.string().min(2).max(32).optional(),
   })
