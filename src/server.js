@@ -14,9 +14,12 @@ const app = express();
 app.use(express.json({ limit: "1mb" }));
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, { explorer: true }));
 
+let activeExtractions = 0;
+
 app.get("/health", (_req, res) => {
   res.json({
     status: "ok",
+    busy: activeExtractions > 0,
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
   });
@@ -33,6 +36,7 @@ app.post("/api/extract", async (req, res) => {
 
   const { url, options } = parsed.data;
 
+  activeExtractions += 1;
   try {
     const payload = await extractVideoSource(url, options);
     return res.json(payload);
@@ -72,6 +76,8 @@ app.post("/api/extract", async (req, res) => {
     return res.status(500).json({
       error: "Unexpected error extracting the video. Check the server logs.",
     });
+  } finally {
+    activeExtractions = Math.max(0, activeExtractions - 1);
   }
 });
 

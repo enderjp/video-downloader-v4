@@ -117,6 +117,10 @@ const swaggerDefinition = {
                   type: "object",
                   properties: {
                     status: { type: "string" },
+                    busy: {
+                      type: "boolean",
+                      description: "True cuando hay al menos una extraccion en curso",
+                    },
                     uptime: { type: "number" },
                     timestamp: { type: "string", format: "date-time" },
                   },
