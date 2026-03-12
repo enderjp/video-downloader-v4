@@ -37,91 +37,6 @@ const INLINE_CANDIDATE_REGEXES = [
   GENERIC_ESCAPED_MP4_REGEX,
 ].map((regex) => ({ source: regex.source, flags: regex.flags }));
 
-const buildFacebookUrlVariants = (rawUrl) => {
-  const variants = [];
-  const pushUnique = (value) => {
-    if (!variants.includes(value)) {
-      variants.push(value);
-    }
-  };
-
-  const baseUrl = new URL(rawUrl);
-  pushUnique(baseUrl.toString());
-
-  const altHosts = [
-    "www.facebook.com",
-    "m.facebook.com",
-    "mbasic.facebook.com",
-    "web.facebook.com",
-  ];
-
-  if (baseUrl.hostname.endsWith("facebook.com")) {
-    for (const host of altHosts) {
-      const clone = new URL(baseUrl.toString());
-      clone.hostname = host;
-      pushUnique(clone.toString());
-    }
-  }
-
-  const videoIdMatch =
-    baseUrl.pathname.match(/\/videos\/([0-9]+)/) ||
-    baseUrl.searchParams.get("v") ||
-    null;
-  const videoId = Array.isArray(videoIdMatch)
-    ? videoIdMatch[1]
-    : typeof videoIdMatch === "string"
-      ? videoIdMatch
-      : null;
-
-  if (videoId) {
-    for (const host of altHosts) {
-      const watchUrl = new URL(`https://${host}/watch/`);
-      watchUrl.searchParams.set("v", videoId);
-      pushUnique(watchUrl.toString());
-    }
-  }
-
-  return variants;
-};
-
-const buildCookieHeader = (cookies) =>
-  Array.isArray(cookies) && cookies.length
-    ? cookies.map(({ name, value }) => `${name}=${value}`).join("; ")
-    : null;
-
-const tryHttpFallbackExtraction = async (urls, { headers }) => {
-  if (!Array.isArray(urls) || !urls.length) {
-    return null;
-  }
-  for (const url of urls) {
-    try {
-      const response = await fetch(url, {
-        headers,
-        redirect: "follow",
-      });
-      if (!response.ok) {
-        continue;
-      }
-      const html = await response.text();
-      const candidates = parsePlayableUrlsFromText(html)
-        .map(normalizeCandidateUrl)
-        .filter(Boolean);
-      if (candidates.length) {
-        console.warn(
-          `HTTP fallback located ${candidates.length} candidates for ${url}`,
-        );
-        return { url, htmlContent: html, candidates };
-      }
-    } catch (error) {
-      console.warn(
-        `HTTP fallback request failed for ${url}:`,
-        error?.message ?? error,
-      );
-    }
-  }
-  return null;
-};
-
 const decodeUnicodeSequences = (value) =>
   typeof value === "string"
     ? value.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
@@ -351,7 +266,6 @@ const readVideoUrl = async (page) => {
 
 export const extractVideoSource = async (rawUrl, options = {}) => {
   const targetUrl = normalizeFacebookUrl(rawUrl);
-  const urlVariants = buildFacebookUrlVariants(targetUrl);
   // Attempt to locate a Chrome/Chromium executable from environment or common locations.
   const resolveExecutable = () => {
     const envPath = process.env.PUPPETEER_EXECUTABLE_PATH;
@@ -480,141 +394,50 @@ export const extractVideoSource = async (rawUrl, options = {}) => {
     if (cookies.length) {
       await page.setCookie(...cookies);
     }
-    const cookieHeader = buildCookieHeader(cookies);
 
-    const aggregatedInlineCandidates = new Set();
-    const aggregatedHtmlCandidates = new Set();
-    const aggregatedScriptCandidates = new Set();
-    let networkCandidates = [];
-    let domCandidate = null;
-    let videoSource = null;
-    let lastAttemptDetails = null;
-    let lastPageHtml = "";
+    await page.goto(targetUrl, { waitUntil: "networkidle2" });
+    await page.waitForSelector("video", { timeout: 8000 }).catch(() => null);
+    await delay(2000);
 
-    for (const attemptUrl of urlVariants) {
-      try {
-        console.warn(`Attempting Facebook scrape at ${attemptUrl}`);
-        await page.goto(attemptUrl, { waitUntil: "networkidle2" });
-      } catch (navError) {
-        console.warn(
-          `Navigation failed for ${attemptUrl}:`,
-          navError?.message ?? navError,
-        );
-        continue;
-      }
+    const domCandidate = normalizeCandidateUrl(await readVideoUrl(page));
+    const scriptCandidates = (await extractInlineVideoUrls(page))
+      .map(normalizeCandidateUrl)
+      .filter(Boolean);
+    const pageHtml = await page.content();
+    const htmlCandidates = parsePlayableUrlsFromText(pageHtml)
+      .map(normalizeCandidateUrl)
+      .filter(Boolean);
+    const inlineCandidates = Array.from(
+      new Set([...scriptCandidates, ...htmlCandidates]),
+    );
+    const networkCandidate = networkWatcher.next();
+    const networkCandidates = networkWatcher.all();
 
-      await page.waitForSelector("video", { timeout: 8000 }).catch(() => null);
-      await delay(1500);
-
-      const domCandidateForAttempt = normalizeCandidateUrl(await readVideoUrl(page));
-      if (!domCandidate && domCandidateForAttempt) {
-        domCandidate = domCandidateForAttempt;
-      }
-
-      const scriptCandidatesForAttempt = (await extractInlineVideoUrls(page))
-        .map(normalizeCandidateUrl)
-        .filter(Boolean);
-      const pageHtml = await page.content();
-      const htmlCandidatesForAttempt = parsePlayableUrlsFromText(pageHtml)
-        .map(normalizeCandidateUrl)
-        .filter(Boolean);
-      const inlineCandidatesForAttempt = Array.from(
-        new Set([...scriptCandidatesForAttempt, ...htmlCandidatesForAttempt]),
-      );
-
-      scriptCandidatesForAttempt.forEach((value) =>
-        aggregatedScriptCandidates.add(value),
-      );
-      htmlCandidatesForAttempt.forEach((value) =>
-        aggregatedHtmlCandidates.add(value),
-      );
-      inlineCandidatesForAttempt.forEach((value) =>
-        aggregatedInlineCandidates.add(value),
-      );
-
-      lastPageHtml = pageHtml;
-      lastAttemptDetails = {
-        scriptCandidates: scriptCandidatesForAttempt,
-        htmlCandidates: htmlCandidatesForAttempt,
-        inlineCandidates: inlineCandidatesForAttempt,
-        htmlContent: pageHtml,
-        attemptedUrl: attemptUrl,
-      };
-
-      const networkCandidate = networkWatcher.next();
-      const attemptVideoSource =
-        domCandidateForAttempt ?? inlineCandidatesForAttempt[0] ?? networkCandidate;
-      if (attemptVideoSource) {
-        videoSource = attemptVideoSource;
-        break;
-      }
-    }
-
-    networkCandidates = networkWatcher.all();
-    let inlineCandidates = Array.from(aggregatedInlineCandidates);
-    let htmlCandidates = Array.from(aggregatedHtmlCandidates);
-    let scriptCandidates = Array.from(aggregatedScriptCandidates);
-    let candidateUrls = Array.from(
+    const videoSource = domCandidate ?? inlineCandidates[0] ?? networkCandidate;
+    const candidateUrls = Array.from(
       new Set(
         [domCandidate, ...inlineCandidates, ...networkCandidates].filter(Boolean),
       ),
     );
-
-    if (!videoSource && cookieHeader) {
-      const httpHeaders = {
-        "User-Agent": config.userAgent,
-        "Accept-Language": options.locale ?? config.defaultLocale,
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        Cookie: cookieHeader,
-      };
-      const httpFallback = await tryHttpFallbackExtraction(urlVariants, {
-        headers: httpHeaders,
-      });
-      if (httpFallback?.candidates?.length) {
-        httpFallback.candidates.forEach((candidate) => {
-          aggregatedInlineCandidates.add(candidate);
-          aggregatedHtmlCandidates.add(candidate);
-        });
-        inlineCandidates = Array.from(aggregatedInlineCandidates);
-        htmlCandidates = Array.from(aggregatedHtmlCandidates);
-        scriptCandidates = Array.from(aggregatedScriptCandidates);
-        candidateUrls = Array.from(
-          new Set(
-            [domCandidate, ...inlineCandidates, ...networkCandidates].filter(Boolean),
-          ),
-        );
-        videoSource = httpFallback.candidates[0];
-        lastPageHtml = httpFallback.htmlContent;
-        lastAttemptDetails = {
-          scriptCandidates,
-          htmlCandidates: httpFallback.candidates,
-          inlineCandidates: httpFallback.candidates,
-          htmlContent: httpFallback.htmlContent,
-          attemptedUrl: httpFallback.url,
-        };
-      }
-    }
-
     const candidateSummary = {
       dom: domCandidate,
       inline: inlineCandidates,
       network: networkCandidates,
       all: candidateUrls,
     };
+    let debugArtifacts = null;
 
     if (!videoSource) {
-      let debugArtifacts = null;
       if (config.enableDebugSnapshots) {
         try {
           const artifacts = await persistDebugArtifacts({
             page,
             requestedUrl: targetUrl,
-            scriptCandidates: lastAttemptDetails?.scriptCandidates ?? [],
-            htmlCandidates: lastAttemptDetails?.htmlCandidates ?? [],
-            inlineCandidates: lastAttemptDetails?.inlineCandidates ?? [],
+            scriptCandidates,
+            htmlCandidates,
+            inlineCandidates,
             networkCandidates,
-            htmlContent: lastAttemptDetails?.htmlContent ?? lastPageHtml,
+            htmlContent: pageHtml,
             dir: config.debugSnapshotsDir,
           });
           debugArtifacts = artifacts;
