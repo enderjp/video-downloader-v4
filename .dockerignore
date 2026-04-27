@@ -7,3 +7,4 @@ cookies-*.txt
 npm-debug.log*
 .env
 .env.*
+secrets

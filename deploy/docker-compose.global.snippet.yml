@@ -1,0 +1,20 @@
+services:
+  video-downloader-api:
+    container_name: video-downloader-api
+    build:
+      context: /projects/apis/video-downloader-v4
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - /projects/apis/video-downloader-v4/.env.production
+    volumes:
+      - /projects/apis/video-downloader-v4/secrets/facebook-cookies.txt:/run/secrets/facebook-cookies.txt:ro
+      - /projects/apis/video-downloader-v4/snapshots:/app/snapshots
+    expose:
+      - "3000"
+    networks:
+      - caddy_net
+
+networks:
+  caddy_net:
+    external: true

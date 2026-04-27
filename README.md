@@ -140,6 +140,15 @@ Si prefieres que Render construya la imagen desde el `Dockerfile`:
 
 Este enfoque garantiza que Chromium quede horneado dentro de la imagen y evita depender de descargas en tiempo de despliegue.
 
+## Despliegue en DigitalOcean Droplet + Caddy (Docker Compose global)
+
+Para el flujo con subdominio dedicado, Caddy como reverse proxy y compose global, revisa:
+
+- `docs/DEPLOY-DO-DROPLET-CADDY.md`
+- `deploy/docker-compose.global.snippet.yml`
+- `deploy/Caddyfile.snippet`
+- `.env.production.example`
+
 ## Limitaciones y notas
 
 - Algunas publicaciones requieren sesion iniciada; sin cookies no sera posible obtener el video.

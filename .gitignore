@@ -1,5 +1,7 @@
 node_modules/
 .env
+.env.production
 npm-debug.log*
 docs/FIX-MP4-escaped-slashes.md
 snapshots/
+secrets/
