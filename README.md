@@ -30,13 +30,13 @@ npm install
 | `FACEBOOK_LOCALE` | Cabecera `Accept-Language` enviada a Facebook | `en-US,en;q=0.9` |
 | `BLOCK_HEAVY_ASSETS` | Bloquear imagenes/medios pesados (`true`/`false`) | `true` |
 | `PUPPETEER_USER_AGENT` | User-Agent enviado por el navegador automatizado | Chrome generico |
-| `FACEBOOK_COOKIES_PATH` | Ruta del archivo Netscape de cookies reutilizable | `cookies-feb-2026.txt` |
+| `FACEBOOK_COOKIES_PATH` | Ruta del archivo Netscape de cookies reutilizable | `cookies-file.txt` |
 | `FACEBOOK_DEBUG_SNAPSHOTS` | Guardar capturas HTML/JSON cuando no se encuentre video (`true`/`false`) | `true` |
 | `FACEBOOK_DEBUG_DIR` | Carpeta donde se guardan las capturas de debug | `snapshots` |
 
 Crea un archivo `.env` si deseas definirlos y ejecutalo con `PUPPETEER_HEADLESS=false npm run dev`, por ejemplo.
 
-Si necesitas iniciar sesion, coloca un archivo de cookies en formato Netscape (como el generado por extensiones tipo "Get cookies.txt") dentro del proyecto y ajusta `FACEBOOK_COOKIES_PATH`. El valor por defecto `cookies-feb-2026.txt` ya esta referenciado para carga automatica.
+Si necesitas iniciar sesion, coloca un archivo de cookies en formato Netscape (como el generado por extensiones tipo "Get cookies.txt") dentro del proyecto y ajusta `FACEBOOK_COOKIES_PATH`. El valor por defecto `cookies-file.txt` ya esta referenciado para carga automatica.
 
 Cuando no se logre detectar la URL, se guardaran capturas HTML (`.html`) y un resumen de candidatos (`.json`) dentro de la carpeta `snapshots/` (controlado por `FACEBOOK_DEBUG_SNAPSHOTS` y `FACEBOOK_DEBUG_DIR`). Esto facilita revisar el DOM y los candidatos interceptados para ajustar el scraper.
 
@@ -124,7 +124,7 @@ En caso de error, se devuelve un JSON con `error` y `code` (`VIDEO_NOT_FOUND`, `
   - **Build Command**: `npm install`.
   - **Start Command**: `npm start`.
   - **Node version**: Render tomará la de `package.json` (`>=20`).
-3. En la sección de Environment Variables copia las que necesites (puedes usar `.env.example` como referencia). Si vas a usar cookies, sube el archivo al dashboard de Render y ajusta `FACEBOOK_COOKIES_PATH` al path final (por ejemplo `/opt/render/project/src/cookies-feb-2026.txt`).
+3. En la sección de Environment Variables copia las que necesites (puedes usar `.env.example` como referencia). Si vas a usar cookies, sube el archivo como **Secret File** en Render y ajusta `FACEBOOK_COOKIES_PATH` al path final (por ejemplo `/etc/secrets/cookies-file.txt`).
 4. Activa los logs en el dashboard para monitorear Puppeteer. Si Facebook bloquea la navegación, Render mostrará el stack trace.
 5. Una vez que Render complete la construcción verás la URL pública (ej.: `https://fb-video-api.onrender.com`). Los endpoints `GET /health`, `GET /docs` y `POST /api/extract` quedan disponibles automáticamente.
 
