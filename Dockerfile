@@ -3,8 +3,7 @@ FROM node:20-slim
 # Ensure Puppeteer cache path matches runtime on Render
 ENV NODE_ENV=production \
   PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
-  PUPPETEER_HEADLESS=new \
-  PORT=3000
+  PUPPETEER_HEADLESS=new
 
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
