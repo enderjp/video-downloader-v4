@@ -31,6 +31,10 @@ npm install
 | `BLOCK_HEAVY_ASSETS` | Bloquear imagenes/medios pesados (`true`/`false`) | `true` |
 | `PUPPETEER_USER_AGENT` | User-Agent enviado por el navegador automatizado | Chrome generico |
 | `FACEBOOK_COOKIES_PATH` | Ruta del archivo Netscape de cookies reutilizable | `cookies-file.txt` |
+| `COOKIE_ADMIN_TOKEN` | Token Bearer requerido para rotar cookies via endpoint admin | _vacio (deshabilitado)_ |
+| `COOKIE_ADMIN_MAX_BYTES` | Tamano maximo permitido para upload de cookies | `1048576` |
+| `COOKIE_AUDIT_LOG_PATH` | Ruta del log JSONL de auditoria de rotacion de cookies | `snapshots/cookie-rotation.audit.jsonl` |
+| `COOKIE_ADMIN_ACTOR_HEADER` | Header opcional para registrar actor en auditoria | `x-cookie-actor` |
 | `FACEBOOK_DEBUG_SNAPSHOTS` | Guardar capturas HTML/JSON cuando no se encuentre video (`true`/`false`) | `true` |
 | `FACEBOOK_DEBUG_DIR` | Carpeta donde se guardan las capturas de debug | `snapshots` |
 
@@ -95,6 +99,39 @@ Respuesta exitosa:
 
 En caso de error, se devuelve un JSON con `error` y `code` (`VIDEO_NOT_FOUND`, `FACEBOOK_ACCESS_ERROR`, etc.).
 
+## Rotacion de cookies via endpoint admin (n8n/UI)
+
+El endpoint `POST /api/admin/cookies/replace` permite reemplazar de forma atomica el archivo de cookies sin reiniciar el contenedor.
+
+Requisitos:
+- `COOKIE_ADMIN_TOKEN` configurado.
+- Mount del archivo de cookies con permisos de escritura dentro del contenedor (sin `:ro`).
+- n8n (u otro backend) enviando payload raw (`text/plain` o `application/octet-stream`) con `Authorization: Bearer <COOKIE_ADMIN_TOKEN>`.
+
+Ejemplo con `curl`:
+
+```bash
+curl -X POST http://localhost:3000/api/admin/cookies/replace \
+  -H "Authorization: Bearer $COOKIE_ADMIN_TOKEN" \
+  -H "Content-Type: text/plain" \
+  -H "x-cookie-actor: n8n-manual-rotation" \
+  --data-binary "@cookies-file.txt"
+```
+
+Respuesta exitosa:
+
+```json
+{
+  "ok": true,
+  "bytes": 873,
+  "cookiesParsed": 12,
+  "sha256": "f20f04ed8f9fbc8f9ee6f736f8f7f931d5c7dbaadfcb93f4a4d4e75fc2eeb9d2",
+  "updatedAt": "2026-04-27T20:45:00.000Z"
+}
+```
+
+Cada intento queda auditado en JSONL (`COOKIE_AUDIT_LOG_PATH`) sin almacenar el contenido del archivo.
+
 ## Preparar el proyecto para un repositorio propio
 
 1. Copia las variables necesarias: `cp .env.example .env` y ajusta los valores (sobre todo `FACEBOOK_COOKIES_PATH` si planeas subir un archivo distinto).
@@ -145,9 +182,14 @@ Este enfoque garantiza que Chromium quede horneado dentro de la imagen y evita d
 Para el flujo con subdominio dedicado, Caddy como reverse proxy y compose global, revisa:
 
 - `docs/DEPLOY-DO-DROPLET-CADDY.md`
+- `docs/DEPLOY-NEW-API-TEMPLATE.md`
+- `docs/COOKIE-ROTATION-N8N.md`
 - `deploy/docker-compose.global.snippet.yml`
 - `deploy/Caddyfile.snippet`
 - `.env.production.example`
+- `deploy/templates/docker-compose.api.template.yml`
+- `deploy/templates/Caddyfile.api.template`
+- `deploy/templates/.env.production.template`
 
 ## Limitaciones y notas
 

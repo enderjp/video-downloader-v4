@@ -1,28 +1,7 @@
 import path from "path";
 import { promises as fs } from "fs";
 import { ScraperError } from "../errors.js";
-
-const netscapeLineToCookie = (line) => {
-  const parts = line.split(/\t/);
-  if (parts.length < 7) {
-    return null;
-  }
-  const [domain, , cookiePath, secureFlag, expiresRaw, name, ...valueParts] = parts;
-  const value = valueParts.join("\t");
-  if (!name || typeof value === "undefined") {
-    return null;
-  }
-  const expires = Number(expiresRaw);
-  return {
-    domain,
-    path: cookiePath || "/",
-    secure: secureFlag?.toUpperCase() === "TRUE",
-    expires: Number.isFinite(expires) && expires > 0 ? expires : undefined,
-    name,
-    value,
-    httpOnly: false,
-  };
-};
+import { parseNetscapeCookieText } from "./netscapeCookies.js";
 
 let cache = {
   path: null,
@@ -53,12 +32,7 @@ export const loadFacebookCookies = async (filePath) => {
   }
 
   const raw = await fs.readFile(absolutePath, "utf-8");
-  const cookies = raw
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line && !line.startsWith("#"))
-    .map(netscapeLineToCookie)
-    .filter(Boolean);
+  const { cookies } = parseNetscapeCookieText(raw);
 
   if (!cookies.length) {
     throw new ScraperError("No cookies were parsed from the provided file.", {

@@ -1,0 +1,20 @@
+services:
+  <api-service-name>:
+    container_name: <api-service-name>
+    build:
+      context: <repo-absolute-path>
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    volumes:
+      - <repo-absolute-path>/secrets/<secret-file-name>:/run/secrets/<secret-file-name>
+      - <repo-absolute-path>/snapshots:/app/snapshots
+    expose:
+      - "3000"
+    networks:
+      - web
+
+networks:
+  web:
+    external: true

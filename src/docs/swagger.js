@@ -20,8 +20,18 @@ const swaggerDefinition = {
       name: "Scraper",
       description: "Operaciones relacionadas al scraper de videos",
     },
+    {
+      name: "Admin",
+      description: "Operaciones administrativas seguras",
+    },
   ],
   components: {
+    securitySchemes: {
+      bearerAuth: {
+        type: "http",
+        scheme: "bearer",
+      },
+    },
     schemas: {
       ExtractRequest: {
         type: "object",
@@ -101,6 +111,19 @@ const swaggerDefinition = {
           },
         },
       },
+      CookieReplaceResponse: {
+        type: "object",
+        properties: {
+          ok: { type: "boolean", example: true },
+          bytes: { type: "integer", example: 1024 },
+          cookiesParsed: { type: "integer", example: 12 },
+          sha256: {
+            type: "string",
+            example: "f20f04ed8f9fbc8f9ee6f736f8f7f931d5c7dbaadfcb93f4a4d4e75fc2eeb9d2",
+          },
+          updatedAt: { type: "string", format: "date-time" },
+        },
+      },
     },
   },
   paths: {
@@ -178,6 +201,93 @@ const swaggerDefinition = {
           },
           500: {
             description: "Error inesperado del servidor",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/api/admin/cookies/replace": {
+      post: {
+        tags: ["Admin"],
+        summary: "Replace the Netscape cookie file used by the scraper",
+        description:
+          "Receives a raw cookies.txt payload and atomically replaces the configured cookie file.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: "header",
+            name: "x-cookie-actor",
+            schema: { type: "string" },
+            required: false,
+            description: "Optional actor identifier for audit logs.",
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "text/plain": {
+              schema: { type: "string", format: "binary" },
+            },
+            "application/octet-stream": {
+              schema: { type: "string", format: "binary" },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: "Cookie file replaced successfully",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CookieReplaceResponse" },
+              },
+            },
+          },
+          400: {
+            description: "Invalid cookie payload",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
+              },
+            },
+          },
+          401: {
+            description: "Missing Authorization header",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
+              },
+            },
+          },
+          403: {
+            description: "Invalid admin token",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
+              },
+            },
+          },
+          413: {
+            description: "Payload too large",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
+              },
+            },
+          },
+          500: {
+            description: "Unexpected write or server error",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
+              },
+            },
+          },
+          503: {
+            description: "Admin endpoint disabled by configuration",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/ErrorResponse" },

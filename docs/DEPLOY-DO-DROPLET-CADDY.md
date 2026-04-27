@@ -49,6 +49,8 @@ Important production defaults:
 - `PORT=3000`
 - `FACEBOOK_COOKIES_PATH=/run/secrets/facebook-cookies.txt`
 - `FACEBOOK_DEBUG_DIR=/app/snapshots`
+- `COOKIE_ADMIN_TOKEN=<long-random-secret>`
+- `COOKIE_AUDIT_LOG_PATH=/app/snapshots/cookie-rotation.audit.jsonl`
 
 ## 4) Add Facebook cookies as a host secret
 
@@ -68,6 +70,7 @@ into your global compose file, making sure:
 - Service name is `video-downloader-api`
 - It joins the same external Docker network as Caddy (`caddy_net`)
 - Paths match `/projects/apis/video-downloader-v4`
+- Cookie file mount is writable (no `:ro`) so admin rotation can replace it
 
 ## 6) Add Caddy route
 
@@ -120,3 +123,4 @@ docker compose logs --tail=80 video-downloader-api
 4. Extraction failures return controlled JSON (`404` or `502`) without crashing container.
 5. Service starts after droplet reboot (`restart: unless-stopped`).
 6. `git pull + compose up --build` updates app without changing public endpoints.
+7. `POST /api/admin/cookies/replace` rotates cookies and appends one JSON line in `/app/snapshots/cookie-rotation.audit.jsonl`.

@@ -1,0 +1,4 @@
+<public-hostname> {
+  reverse_proxy <api-service-name>:3000
+  encode zstd gzip
+}
