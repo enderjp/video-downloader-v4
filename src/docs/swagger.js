@@ -229,6 +229,19 @@ const swaggerDefinition = {
         requestBody: {
           required: true,
           content: {
+            "multipart/form-data": {
+              schema: {
+                type: "object",
+                required: ["file"],
+                properties: {
+                  file: {
+                    type: "string",
+                    format: "binary",
+                    description: "Netscape cookies file (cookies.txt)",
+                  },
+                },
+              },
+            },
             "text/plain": {
               schema: { type: "string", format: "binary" },
             },

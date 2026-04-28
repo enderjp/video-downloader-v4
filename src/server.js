@@ -1,6 +1,7 @@
 import express from "express";
 import swaggerUi from "swagger-ui-express";
 import { timingSafeEqual } from "crypto";
+import multer from "multer";
 import { config } from "./config.js";
 import { extractPayloadSchema } from "./validators/extractSchema.js";
 import {
@@ -49,10 +50,38 @@ const appendAuditSafely = async (event) => {
   }
 };
 
-const cookieReplaceUploadParser = express.raw({
+const rawCookieUploadParser = express.raw({
   type: ["text/plain", "application/octet-stream", "application/x-netscape-cookie"],
   limit: config.cookieAdminMaxBytes,
 });
+
+const multipartCookieUploadParser = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: config.cookieAdminMaxBytes,
+    files: 1,
+  },
+}).any();
+
+const cookieReplaceUploadParser = (req, res, next) => {
+  if (req.is("multipart/form-data")) {
+    return multipartCookieUploadParser(req, res, next);
+  }
+  return rawCookieUploadParser(req, res, next);
+};
+
+const getCookieUploadBuffer = (req) => {
+  if (Buffer.isBuffer(req.body)) {
+    return req.body;
+  }
+  if (Array.isArray(req.files) && req.files.length > 0) {
+    const firstFile = req.files[0];
+    if (Buffer.isBuffer(firstFile?.buffer)) {
+      return firstFile.buffer;
+    }
+  }
+  return null;
+};
 
 app.get("/health", (_req, res) => {
   res.json({
@@ -65,6 +94,7 @@ app.get("/health", (_req, res) => {
 
 app.post("/api/admin/cookies/replace", cookieReplaceUploadParser, async (req, res) => {
   const now = new Date().toISOString();
+  const uploadBuffer = getCookieUploadBuffer(req);
   const actor = req.get(config.cookieAdminActorHeader) ?? "unknown";
   const auditBase = {
     timestamp: now,
@@ -119,7 +149,7 @@ app.post("/api/admin/cookies/replace", cookieReplaceUploadParser, async (req, re
   try {
     const updateResult = await replaceCookieFileAtomically({
       cookieFilePath: config.cookiesFilePath,
-      bodyBuffer: req.body,
+      bodyBuffer: uploadBuffer,
       maxBytes: config.cookieAdminMaxBytes,
     });
 
@@ -154,7 +184,7 @@ app.post("/api/admin/cookies/replace", cookieReplaceUploadParser, async (req, re
       ...auditBase,
       status: "error",
       code: error.code ?? "COOKIE_ROTATION_ERROR",
-      bytes: Buffer.isBuffer(req.body) ? req.body.length : null,
+      bytes: Buffer.isBuffer(uploadBuffer) ? uploadBuffer.length : null,
       meta: error.meta ?? null,
     });
 
@@ -240,6 +270,28 @@ app.use(async (error, req, res, next) => {
     return res.status(413).json({
       error: "Payload too large.",
       code: "COOKIE_FILE_TOO_LARGE",
+    });
+  }
+  if (error.code === "LIMIT_FILE_SIZE") {
+    if (req.path === "/api/admin/cookies/replace") {
+      await appendAuditSafely({
+        timestamp: new Date().toISOString(),
+        actor: req.get(config.cookieAdminActorHeader) ?? "unknown",
+        route: req.path,
+        remoteIp: req.ip ?? null,
+        status: "error",
+        code: "COOKIE_FILE_TOO_LARGE",
+      });
+    }
+    return res.status(413).json({
+      error: "Payload too large.",
+      code: "COOKIE_FILE_TOO_LARGE",
+    });
+  }
+  if (error.code === "LIMIT_FILE_COUNT" || error.code === "LIMIT_UNEXPECTED_FILE") {
+    return res.status(400).json({
+      error: "Invalid multipart payload.",
+      code: "COOKIE_FILE_INVALID",
     });
   }
 

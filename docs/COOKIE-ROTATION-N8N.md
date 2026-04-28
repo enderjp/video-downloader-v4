@@ -23,6 +23,12 @@ This API supports cookie rotation through:
   - `Authorization: Bearer <COOKIE_ADMIN_TOKEN>`
   - `x-cookie-actor: n8n:<workflow-name>`
 
+Alternative (multipart):
+- Send body as: `Form-Data`
+- Field name: `file`
+- Field value: uploaded cookie file binary
+- Keep same headers above (`Authorization`, optional `x-cookie-actor`)
+
 ## Expected success payload
 
 ```json

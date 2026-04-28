@@ -106,7 +106,10 @@ El endpoint `POST /api/admin/cookies/replace` permite reemplazar de forma atomic
 Requisitos:
 - `COOKIE_ADMIN_TOKEN` configurado.
 - Mount del archivo de cookies con permisos de escritura dentro del contenedor (sin `:ro`).
-- n8n (u otro backend) enviando payload raw (`text/plain` o `application/octet-stream`) con `Authorization: Bearer <COOKIE_ADMIN_TOKEN>`.
+- n8n (u otro backend) enviando:
+  - payload raw (`text/plain` o `application/octet-stream`), o
+  - `multipart/form-data` con el archivo en el campo `file`.
+  Con `Authorization: Bearer <COOKIE_ADMIN_TOKEN>`.
 
 Ejemplo con `curl`:
 
@@ -116,6 +119,15 @@ curl -X POST http://localhost:3000/api/admin/cookies/replace \
   -H "Content-Type: text/plain" \
   -H "x-cookie-actor: n8n-manual-rotation" \
   --data-binary "@cookies-file.txt"
+```
+
+Ejemplo `multipart/form-data`:
+
+```bash
+curl -X POST http://localhost:3000/api/admin/cookies/replace \
+  -H "Authorization: Bearer $COOKIE_ADMIN_TOKEN" \
+  -H "x-cookie-actor: n8n-manual-rotation" \
+  -F "file=@cookies-file.txt"
 ```
 
 Respuesta exitosa:
